@@ -1,0 +1,4 @@
+/* Tailwind layers — required for utility classes to work. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
