@@ -17,9 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // rather than to the whole api group, because the public "plans" and Stripe
         // "webhook" routes must NOT require an X-Tenant header.
         $middleware->alias([
-            'tenant'     => \App\Http\Middleware\ResolveTenant::class,   // resolves X-Tenant header
-            'plan.limit' => \App\Http\Middleware\CheckPlanLimit::class,  // plan.limit:users / plan.limit:projects
+            'tenant'      => \App\Http\Middleware\ResolveTenant::class,   // resolves X-Tenant header
+            'plan.limit'  => \App\Http\Middleware\CheckPlanLimit::class,  // plan.limit:users / plan.limit:projects
             'tenant.role' => \App\Http\Middleware\EnsureTenantRole::class, // tenant.role:tenant_admin,manager
+            'subscribed'  => \App\Http\Middleware\EnsureSubscribed::class, // Paywall gate
         ]);
 
         // CRITICAL ordering: ResolveTenant MUST run before the JWT "auth:tenant"

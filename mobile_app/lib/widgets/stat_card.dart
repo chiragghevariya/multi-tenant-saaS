@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme.dart';
 
 /// A small metric card used on the Dashboard tab.
 class StatCard extends StatelessWidget {
@@ -11,20 +10,64 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final cardBg = colors.surfaceContainerLowest;
+    final cardBorder = colors.outlineVariant;
+    final iconBg = colors.primaryContainer;
+    final iconFg = colors.primary;
+    final titleColor = colors.onSurface;
+    final subtitleColor = colors.onSurfaceVariant;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: colors.shadow.withOpacity(isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: kPrimary),
-          const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+          // Icon badge container
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconFg, size: 20),
+          ),
+          const SizedBox(height: 16),
+          // Value metric
+          Text(
+            value,
+            style: theme.textTheme.displayMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: titleColor,
+              letterSpacing: -1.0,
+              fontSize: 28, // Maintain layout proportion
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Label text
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: subtitleColor,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.1,
+            ),
+          ),
         ],
       ),
     );

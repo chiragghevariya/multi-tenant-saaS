@@ -47,6 +47,19 @@ class TaskController extends Controller
         // Make sure the task really belongs to this project.
         abort_if($task->project_id !== $project->id, 404, 'Task not found in this project.');
 
+        $user = auth('tenant')->user();
+
+        // If the user is a member, restrict their access.
+        if ($user->role === 'member') {
+            // Member can only update tasks assigned to them.
+            abort_unless($task->assigned_to === $user->id, 403, 'You do not have permission to update tasks that are not assigned to you.');
+
+            // Member can only update the status of the task.
+            if ($request->hasAny(['title', 'assigned_to', 'due_date'])) {
+                abort(403, 'Members are only allowed to update the status of assigned tasks.');
+            }
+        }
+
         $data = $request->validate([
             'title'       => ['sometimes', 'string', 'max:255'],
             'status'      => ['sometimes', 'in:todo,in_progress,done'],

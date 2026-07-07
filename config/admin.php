@@ -10,7 +10,7 @@ return [
     | which live in .env (NOT in a tenant). Change them there, never in code.
     */
 
-    'email'    => env('ADMIN_EMAIL', 'admin@saas.test'),
-    'password' => env('ADMIN_PASSWORD', 'password'),
+    'email'    => env('SUPER_ADMIN_EMAIL', 'admin@saas.test'),
+    'password' => env('SUPER_ADMIN_PASSWORD', 'password'),
 
 ];

@@ -107,6 +107,81 @@ class TenantBillingController extends CashierWebhookController
     }
 
     /**
+     * POST /api/billing/checkout  (TENANT-SCOPED — needs X-Tenant header + tenant_admin)
+     * Creates a Stripe Checkout Session (Stripe's HOSTED payment page) for the given
+     * plan and returns its URL. The mobile app opens this URL in the device browser; the
+     * tenant pays on Stripe's page (no card fields inside the app).
+     *
+     * IMPORTANT: we do NOT trust the browser's return to mark the tenant paid. The real
+     * confirmation comes from the Stripe webhook (customer.subscription.created/updated),
+     * which flips status -> active and syncs plan_id. success_url is just a "thank you"
+     * page the user reads before returning to the app (Approach A).
+     *
+     * TWO CASES handled here:
+     *   1. NEW subscriber  -> hosted Checkout page, returns { checkout_url }.
+     *   2. EXISTING subscriber changing plan (upgrade/downgrade) -> swap the live Stripe
+     *      subscription onto the new price (no browser needed, card already on file),
+     *      returns { swapped: true }.
+     *
+     * Expected JSON body: { "plan_id": 2 }
+     */
+    public function checkout(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'plan_id' => ['required', 'integer', 'exists:plans,id'],
+        ]);
+
+        /** @var Tenant $tenant */
+        $tenant = app('currentTenant');           // set by the ResolveTenant middleware
+        $plan   = Plan::findOrFail($data['plan_id']);
+
+        // A plan must be wired to a real Stripe Price before anyone can buy it.
+        abort_if(blank($plan->stripe_price_id), 422, 'This plan is not available for purchase yet.');
+
+        // CASE 2: already subscribed -> this is a PLAN CHANGE, not a new signup. Swap the
+        // existing Stripe subscription onto the new plan's price. Stripe prorates the
+        // difference automatically and fires customer.subscription.updated, which re-syncs
+        // plan_id + status via the webhook. We also mirror plan_id right away for a
+        // responsive UI (the webhook just confirms it).
+        if ($tenant->subscribed('default')) {
+            $subscription = $tenant->subscription('default');
+
+            // No-op guard: already on this exact price.
+            if ($subscription->stripe_price === $plan->stripe_price_id) {
+                return response()->json(['message' => 'Tenant is already on this plan.'], 409);
+            }
+
+            $subscription->swap($plan->stripe_price_id);
+            $tenant->update(['plan_id' => $plan->id]);
+
+            return response()->json([
+                'data' => [
+                    'swapped' => true,
+                    'plan'    => $plan->name,
+                ],
+            ]);
+        }
+
+        // CASE 1: brand-new subscriber. Make sure the tenant exists as a Stripe customer (cus_...) before the session.
+        $tenant->createOrGetStripeCustomer();
+
+        // Build the hosted Checkout session for a subscription to this plan's price.
+        // Stripe substitutes {CHECKOUT_SESSION_ID} into success_url so the thank-you page
+        // could look the session up if needed.
+        $checkout = $tenant->newSubscription('default', $plan->stripe_price_id)
+            ->checkout([
+                'success_url' => route('billing.checkout.success').'?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url'  => route('billing.checkout.cancel'),
+            ]);
+
+        return response()->json([
+            'data' => [
+                'checkout_url' => $checkout->url, // https://checkout.stripe.com/... — app opens this
+            ],
+        ], 201);
+    }
+
+    /**
      * POST /api/billing/cancel  (TENANT-SCOPED)
      * Cancels the current tenant's subscription at the END of the billing period
      * (the tenant keeps access until then — Stripe's "grace period").
@@ -209,6 +284,21 @@ class TenantBillingController extends CashierWebhookController
     }
 
     /**
+     * Fired when a subscription is first created — the PRIMARY event of the hosted
+     * Checkout flow (the tenant picks + pays for a plan on Stripe's page). We must
+     * sync the tenant here too, otherwise the mirror columns stay stale until some
+     * later "updated" event happens to arrive.
+     */
+    protected function handleCustomerSubscriptionCreated(array $payload)
+    {
+        $response = parent::handleCustomerSubscriptionCreated($payload); // let Cashier create its row
+
+        $this->syncTenantFromSubscription($payload, 'subscription.created');
+
+        return $response;
+    }
+
+    /**
      * Fired when a subscription changes (renewed, plan swapped, payment recovered,
      * payment failed/retrying, etc.).
      */
@@ -216,19 +306,53 @@ class TenantBillingController extends CashierWebhookController
     {
         $response = parent::handleCustomerSubscriptionUpdated($payload);
 
-        $tenant = $this->tenantFromWebhook($payload, 'subscription.updated');
-
-        if ($tenant) {
-            $stripeStatus = $payload['data']['object']['status'] ?? null;
-
-            $tenant->update([
-                // Suspend only when Stripe reports a non-recoverable status (see STRIPE_GOOD_STANDING).
-                'status'                 => in_array($stripeStatus, self::STRIPE_GOOD_STANDING, true) ? 'active' : 'suspended',
-                'stripe_subscription_id' => $payload['data']['object']['id'] ?? $tenant->stripe_subscription_id,
-            ]);
-        }
+        $this->syncTenantFromSubscription($payload, 'subscription.updated');
 
         return $response;
+    }
+
+    /**
+     * Mirror a subscription webhook payload onto our tenants table (status, the Stripe
+     * subscription id, and the plan derived from the subscription's price). Shared by the
+     * created + updated handlers so the tenant row always reflects the live subscription.
+     */
+    protected function syncTenantFromSubscription(array $payload, string $event): void
+    {
+        $tenant = $this->tenantFromWebhook($payload, $event);
+
+        if (! $tenant) {
+            return;
+        }
+
+        $stripeStatus = $payload['data']['object']['status'] ?? null;
+
+        $update = [
+            // Suspend only when Stripe reports a non-recoverable status (see STRIPE_GOOD_STANDING).
+            'status'                 => in_array($stripeStatus, self::STRIPE_GOOD_STANDING, true) ? 'active' : 'suspended',
+            'stripe_subscription_id' => $payload['data']['object']['id'] ?? $tenant->stripe_subscription_id,
+        ];
+
+        // Keep the mirrored plan_id in sync with whatever price the subscription now
+        // carries. This is what makes the hosted-Checkout flow work: the plan is chosen
+        // on Stripe's page (not in subscribe()), so the webhook is the only place that
+        // learns which plan was actually bought.
+        if ($plan = $this->planFromSubscriptionPayload($payload)) {
+            $update['plan_id'] = $plan->id;
+        }
+
+        $tenant->update($update);
+    }
+
+    /**
+     * Resolve our local Plan from the Stripe price id carried on a subscription webhook
+     * payload. Returns null if the price isn't recognised (e.g. a price created directly
+     * in Stripe that no local plan mirrors).
+     */
+    protected function planFromSubscriptionPayload(array $payload): ?Plan
+    {
+        $priceId = $payload['data']['object']['items']['data'][0]['price']['id'] ?? null;
+
+        return $priceId ? Plan::where('stripe_price_id', $priceId)->first() : null;
     }
 
     /**

@@ -1,6 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../config/api_config.dart';
+import '../screens/login_screen.dart';
 import 'storage.dart';
+
+/// Global key to access navigation without BuildContext (used for 401 auto-logout redirect).
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 /// A single, shared Dio HTTP client for the whole app.
 ///
@@ -42,6 +47,10 @@ class ApiService {
           // If the token is rejected, drop it so the app returns to login.
           if (e.response?.statusCode == 401) {
             await Storage.clearToken();
+            navigatorKey.currentState?.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (route) => false,
+            );
           }
           handler.next(e);
         },
@@ -56,6 +65,12 @@ class ApiService {
 /// `{ "message": "..." }` on failures.
 String apiError(Object e, [String fallback = 'Something went wrong.']) {
   if (e is DioException) {
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError) {
+      return 'Network error: Cannot reach server. Please check if the server is running or check your server IP.';
+    }
     final data = e.response?.data;
     if (data is Map && data['message'] != null) {
       return data['message'].toString();

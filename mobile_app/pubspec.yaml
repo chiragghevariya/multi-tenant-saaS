@@ -12,6 +12,7 @@ dependencies:
   provider: ^6.1.2 # state management
   dio: ^5.7.0 # HTTP client (interceptors for X-Tenant + Bearer)
   shared_preferences: ^2.3.2 # persist tenant slug + JWT token
+  url_launcher: ^6.3.0 # open the Stripe Checkout page in the device browser
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

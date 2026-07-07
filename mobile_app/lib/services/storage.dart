@@ -29,4 +29,14 @@ class Storage {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(StorageKeys.token);
   }
+
+  static Future<void> saveThemeMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageKeys.themeMode, mode);
+  }
+
+  static Future<String?> getThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(StorageKeys.themeMode);
+  }
 }

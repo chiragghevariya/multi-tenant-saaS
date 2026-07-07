@@ -41,8 +41,8 @@ class CheckPlanLimit
             return $next($request);
         }
 
-        // NULL = unlimited. Otherwise block once usage has reached the limit.
-        if ($max !== null && $current >= $max) {
+        // NULL or 0 = unlimited. Otherwise block once usage has reached the limit.
+        if ($max !== null && $max > 0 && $current >= $max) {
             abort(403, 'Plan limit reached. Please upgrade.');
         }
 

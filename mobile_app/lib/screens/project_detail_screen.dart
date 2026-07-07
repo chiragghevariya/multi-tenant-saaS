@@ -19,7 +19,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   List<Task>? _tasks;
   String? _error;
 
-  // status key -> column title (insertion order is preserved when iterating).
   static const Map<String, String> _columns = {
     'todo': 'Todo',
     'in_progress': 'In Progress',
@@ -49,20 +48,30 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final provider = context.read<ProjectProvider>();
     final titleCtrl = TextEditingController();
     String status = 'todo';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final create = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('New task'),
+          title: const Text('Add New Task'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Title')),
-              const SizedBox(height: 8),
-              DropdownButton<String>(
+              TextField(
+                controller: titleCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Task Title',
+                  hintText: 'e.g. Wireframe homepage',
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
                 value: status,
-                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Initial Status',
+                ),
                 items: _columns.entries
                     .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                     .toList(),
@@ -71,8 +80,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: isDark ? const Color(0xFF94A3B8) : kSlate700,
+              ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Add Task'),
+            ),
           ],
         ),
       ),
@@ -82,7 +100,12 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final err = await provider.createTask(widget.project.id, titleCtrl.text, status);
     if (!mounted) return;
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(err),
+          backgroundColor: kError,
+        ),
+      );
     } else {
       _loadTasks(); // refresh the columns
     }
@@ -90,67 +113,308 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final titleColor = isDark ? Colors.white : kSlate900;
+    final dividerColor = isDark ? const Color(0xFF334155) : kSlate100;
+    final descCardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final descCardBorder = isDark ? const Color(0xFF334155) : kSlate200;
+    final columnBg = isDark ? const Color(0xFF131B2E) : kSlate100.withOpacity(0.6);
+    final columnBorder = isDark ? const Color(0xFF1E293B) : kSlate200;
+
+    final fabBg = isDark ? const Color(0xFF818CF8) : kPrimary;
+    final fabFg = isDark ? const Color(0xFF0F172A) : Colors.white;
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.project.name)),
+      appBar: AppBar(
+        title: Text(
+          widget.project.name,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: titleColor,
+            letterSpacing: -0.6,
+          ),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            color: dividerColor,
+            height: 1,
+          ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: kPrimary,
+        backgroundColor: fabBg,
+        elevation: 4,
         onPressed: _showAddTask,
-        child: const Icon(Icons.add),
+        child: Icon(Icons.add_rounded, color: fabFg, size: 28),
       ),
       body: _error != null
-          ? Center(child: Text(_error!))
-          : _tasks == null
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.all(16),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if ((widget.project.description ?? '').isNotEmpty) ...[
-                      Text(widget.project.description!, style: const TextStyle(color: Colors.black54)),
-                      const SizedBox(height: 16),
-                    ],
-                    // One section per status column.
-                    for (final entry in _columns.entries)
-                      _StatusColumn(
-                        title: entry.value,
-                        tasks: _tasks!.where((t) => t.status == entry.key).toList(),
+                    const Icon(Icons.error_outline_rounded, color: kError, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: titleColor),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _tasks == null
+              ? Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(isDark ? const Color(0xFF818CF8) : kPrimary),
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Project Description Header Card
+                    if ((widget.project.description ?? '').isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        decoration: BoxDecoration(
+                          color: descCardBg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: descCardBorder, width: 1),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.info_outline_rounded, color: isDark ? const Color(0xFF818CF8) : kPrimary, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                widget.project.description!,
+                                style: TextStyle(
+                                  color: isDark ? const Color(0xFFE2E8F0) : kSlate700,
+                                  fontSize: 14,
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    
+                    // Kanban Board Columns (Horizontal scroll)
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final entry in _columns.entries)
+                              Container(
+                                width: screenWidth * 0.80,
+                                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: columnBg,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: columnBorder, width: 1),
+                                ),
+                                child: _KanbanColumn(
+                                  title: entry.value,
+                                  statusKey: entry.key,
+                                  tasks: _tasks!.where((t) => t.status == entry.key).toList(),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
     );
   }
 }
 
-class _StatusColumn extends StatelessWidget {
+class _KanbanColumn extends StatelessWidget {
   final String title;
+  final String statusKey;
   final List<Task> tasks;
-  const _StatusColumn({required this.title, required this.tasks});
+  
+  const _KanbanColumn({
+    required this.title,
+    required this.statusKey,
+    required this.tasks,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Left-border accent based on column type
+    Color accentColor = isDark ? const Color(0xFF94A3B8) : kSlate500;
+    if (statusKey == 'in_progress') {
+      accentColor = isDark ? const Color(0xFF818CF8) : kPrimary;
+    } else if (statusKey == 'done') {
+      accentColor = kSuccess;
+    }
+
+    final columnTitleColor = isDark ? Colors.white : kSlate900;
+    final badgeBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final badgeBorder = isDark ? const Color(0xFF1E293B) : kSlate200;
+    final badgeText = isDark ? const Color(0xFFE2E8F0) : kSlate700;
+    final taskCardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final taskCardBorder = isDark ? const Color(0xFF334155) : kSlate200;
+    final taskTitleColor = isDark ? Colors.white : kSlate900;
+    final taskDueColor = isDark ? const Color(0xFF94A3B8) : kSlate500;
+    final emptyIconColor = isDark ? const Color(0xFF334155) : kSlate300;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Column Header
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text('$title (${tasks.length})',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        ),
-        if (tasks.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text('—', style: TextStyle(color: Colors.black38)),
-          )
-        else
-          ...tasks.map(
-            (t) => Card(
-              child: ListTile(
-                dense: true,
-                title: Text(t.title),
-                subtitle: t.dueDate != null ? Text('Due ${t.dueDate}') : null,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: columnTitleColor,
+                ),
+              ),
+              const Spacer(),
+              // Count badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: badgeBorder, width: 1),
+                ),
+                child: Text(
+                  '${tasks.length}',
+                  style: TextStyle(
+                    color: badgeText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-        const SizedBox(height: 8),
+        ),
+        
+        // Task List
+        Expanded(
+          child: tasks.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox_rounded, color: emptyIconColor, size: 36),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Empty Column',
+                        style: TextStyle(
+                          color: taskDueColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: tasks.length,
+                  itemBuilder: (context, index) {
+                    final task = tasks[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: taskCardBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: taskCardBorder, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(isDark ? 0.05 : 0.01),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Sidebar Accent
+                              Container(
+                                width: 4,
+                                color: accentColor,
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        task.title,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: taskTitleColor,
+                                        ),
+                                      ),
+                                      if (task.dueDate != null) ...[
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_rounded, size: 12, color: taskDueColor),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Due ${task.dueDate}',
+                                              style: TextStyle(
+                                                color: taskDueColor,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
       ],
     );
   }

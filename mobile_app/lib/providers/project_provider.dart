@@ -12,10 +12,10 @@ class ProjectProvider extends ChangeNotifier {
   String? error;
 
   /// PLAN GATE: true when the tenant has reached its project limit.
-  /// A null maxProjects means "unlimited" (Enterprise) → never at the limit.
+  /// A null or 0 maxProjects means "unlimited" (Enterprise) → never at the limit.
   bool get atProjectLimit {
     final s = stats;
-    if (s == null || s.maxProjects == null) return false;
+    if (s == null || s.maxProjects == null || s.maxProjects == 0) return false;
     return s.projectCount >= s.maxProjects!;
   }
 
@@ -23,6 +23,7 @@ class ProjectProvider extends ChangeNotifier {
     try {
       final res = await ApiService.instance.dio.get('/tenant/dashboard');
       stats = DashboardStats.fromJson(res.data['data'] as Map<String, dynamic>);
+      error = null;
     } catch (e) {
       error = apiError(e, 'Could not load the dashboard.');
     }
@@ -31,12 +32,14 @@ class ProjectProvider extends ChangeNotifier {
 
   Future<void> loadProjects() async {
     loading = true;
+    error = null;
     notifyListeners();
     try {
       final res = await ApiService.instance.dio.get('/tenant/projects');
       projects = (res.data['data'] as List)
           .map((e) => Project.fromJson(e as Map<String, dynamic>))
           .toList();
+      error = null;
     } catch (e) {
       error = apiError(e, 'Could not load projects.');
     } finally {
@@ -47,6 +50,8 @@ class ProjectProvider extends ChangeNotifier {
 
   /// Load dashboard + projects together (used when Home opens or on pull-to-refresh).
   Future<void> loadAll() async {
+    error = null;
+    notifyListeners();
     await Future.wait([loadDashboard(), loadProjects()]);
   }
 

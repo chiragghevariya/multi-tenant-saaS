@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'upgrade_dialog.dart';
 
 /// A usage banner:
@@ -15,33 +16,96 @@ class PlanLimitBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final max = this.max;
-    if (max == null || max == 0) return const SizedBox.shrink(); // unlimited → nothing
-    final ratio = used / max;
+    final maxVal = max;
+    if (maxVal == null || maxVal == 0) return const SizedBox.shrink(); // unlimited → nothing
+    final ratio = used / maxVal;
     if (ratio < 0.8) return const SizedBox.shrink(); // plenty of room left
 
-    final atLimit = used >= max;
-    final bg = atLimit ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7); // red / yellow
-    final fg = atLimit ? const Color(0xFFB91C1C) : const Color(0xFF92400E);
+    final atLimit = used >= maxVal;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    Color bg;
+    Color border;
+    Color fg;
+    Color titleColor = colors.onSurface;
+
+    if (atLimit) {
+      if (isDark) {
+        bg = const Color(0xFF2D1A1A); // Dark Red
+        border = kError.withOpacity(0.3);
+        fg = const Color(0xFFF87171); // Red 400
+      } else {
+        bg = kErrorSoft; // Soft Red
+        border = kError.withOpacity(0.2);
+        fg = kError; // Red 500
+      }
+    } else {
+      if (isDark) {
+        bg = const Color(0xFF2C200A); // Dark Amber
+        border = kWarning.withOpacity(0.3);
+        fg = const Color(0xFFFBBF24); // Amber 400
+      } else {
+        bg = kWarningSoft; // Soft Amber
+        border = kWarning.withOpacity(0.2);
+        fg = const Color(0xFFD97706); // Amber 600
+      }
+    }
+
+    final upgradeButtonColor = colors.primary;
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
-      child: Row(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(atLimit ? Icons.lock : Icons.warning_amber_rounded, color: fg),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              atLimit
-                  ? 'You have reached your $label limit ($used/$max).'
-                  : 'You are nearing your $label limit ($used/$max).',
-              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Icon(atLimit ? Icons.lock_outline_rounded : Icons.info_outline_rounded, color: fg, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  atLimit
+                      ? 'Reached your $label limit ($used/$maxVal)'
+                      : 'Nearing your $label limit ($used/$maxVal)',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: titleColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: upgradeButtonColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => showUpgradeDialog(context),
+                child: const Text('Upgrade'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Clean progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ratio.clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: fg.withOpacity(0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(fg),
             ),
           ),
-          TextButton(onPressed: () => showUpgradeDialog(context), child: const Text('Upgrade Plan')),
         ],
       ),
     );
